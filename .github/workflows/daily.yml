@@ -1,0 +1,61 @@
+name: daily
+on:
+  schedule:
+    - cron: "30 11 * * *" # after the 12:00 Paris issue time in winter and summer
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      GRIDCAST_LIVE_DIR: ${{ github.workspace }}/live-data
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Restore raw data cache
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+      - name: Check out the forecast log branch (orphan, created on first run)
+        run: |
+          if git ls-remote --exit-code --heads origin live-data; then
+            git fetch origin live-data
+            git worktree add live-data origin/live-data
+          else
+            git worktree add --detach live-data
+            git -C live-data checkout --orphan live-data
+            git -C live-data rm -rfq .
+          fi
+      - name: Refresh data, forecast tomorrow, score past forecasts
+        run: |
+          uv run gridcast data --refresh
+          uv run gridcast live
+      - name: Commit the forecast log
+        run: |
+          cd live-data
+          git add forecast_log.csv
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "forecast issued $(date -u +%Y-%m-%d)" || echo "nothing to commit"
+          git push origin HEAD:refs/heads/live-data
+      - run: uv run gridcast report
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
