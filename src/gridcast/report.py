@@ -1,7 +1,8 @@
 """Build the static report page (``site/index.html``) and refresh README result blocks.
 
-The page depends only on committed result tables and, when present, the live forecast
-log, so the Pages workflow can rebuild it without downloading any raw data.
+The page depends only on committed result tables and, when present, a local forecast
+log written by ``make live``, so the Pages workflow can rebuild it without downloading
+any raw data.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import json
 import re
 from collections.abc import Callable
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -216,17 +216,11 @@ def _period_rows(table: pd.DataFrame, points: pd.DataFrame) -> str:
 
 
 def _live_section(log: pd.DataFrame, now: pd.Timestamp) -> tuple[str, str | None, bool]:
-    """Live HTML, its chart, and whether a scored track record exists yet."""
+    """Live HTML (empty without a live forecast), its chart, and whether a scored
+    track record exists yet."""
     issued = log[log["kind"] == "live"] if not log.empty else log
     if issued.empty:
-        return (
-            (
-                "<p class=muted>The daily job has not published yet. From its first run, "
-                "tomorrow's forecast and the running track record appear here.</p>"
-            ),
-            None,
-            False,
-        )
+        return "", None, False
     latest_day = issued["day"].max()
     latest = issued[issued["day"] == latest_day]
     issued_at = pd.Timestamp(latest["issued_at"].iloc[0]).tz_convert(config.PARIS)
@@ -237,7 +231,7 @@ def _live_section(log: pd.DataFrame, now: pd.Timestamp) -> tuple[str, str | None
     if now - issued_at > STALE_AFTER:
         stale = (
             f"<p class=warn>The latest forecast was issued on {issued_at:%d %B %Y}: the "
-            "daily job has not run since. The figures below are not current.</p>"
+            "log has no later forecast. The figures below are not current.</p>"
         )
     lead = (
         f"{stale}<p>Forecast for <strong>{latest_day:%A %d %B %Y}</strong>, issued "
@@ -283,7 +277,7 @@ TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gridcast</title>
 <meta name="description" content="Day-ahead forecast of French electricity demand with
-conformal intervals, benchmarked against RTE and re-issued every day.">
+conformal intervals that hold out of sample, benchmarked fairly against RTE.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Cpath d=%27M1 12 L5 6 L9 9 L15 2%27 stroke=%27%230d9488%27 stroke-width=%272.5%27 fill=%27none%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet"
@@ -342,9 +336,9 @@ ul {{ padding-left:20px; }} li {{ margin:4px 0; }}
 <h1>gridcast</h1>
 <p class="lede">Can a day-ahead forecast of French electricity demand publish uncertainty
 bands that stay honest through an energy crisis? On average yes, month to month only
-partly: a measured answer, plus a forecast re-issued every day in public.</p>
+partly.</p>
 <p class="muted">Backtest {eval_start} to {eval_end} &middot; {eval_hours} hourly day-ahead
-forecasts &middot; issued daily at 12:00 Paris time &middot;
+forecasts, each issued at 12:00 Paris time the day before &middot;
 <a href="{repo}">source code</a></p>
 
 <div class="kpis">
@@ -446,11 +440,11 @@ the demand forecast by its own mean error over the trailing 28 days.</li>
 quantile regression (CQR) on LightGBM quantiles, and adaptive conformal inference
 (Gibbs &amp; Cand&egrave;s, 2021) on top. Because the forecast for D+1 is issued before
 D ends, every method learns from its errors with a two-day delay.</li>
-<li><strong>Live.</strong> A scheduled job retrains, forecasts tomorrow, appends to a
-public log on the <code>live-data</code> branch, scores past forecasts and redeploys
-this page. Days without a live forecast (before the first run, or after an outage) are
-hindcast with the backtest protocol so calibration never runs dry; they are kept out of
-the track record.</li>
+<li><strong>Tomorrow's forecast.</strong> <code>make live</code> runs the same protocol
+on today's data: it retrains, forecasts tomorrow with both intervals, appends to a local
+forecast log and scores past entries once their outcome is published. Days missing from
+the log are hindcast with the backtest protocol so calibration never runs dry; they are
+kept out of the track record.</li>
 </ul>
 
 <h2>Limitations</h2>
@@ -531,55 +525,6 @@ def _filled_text(info: dict) -> tuple[str, str]:
     )
 
 
-def _num(x: float | None) -> float | None:
-    """A JSON-safe number: NaN and infinities become null."""
-    return float(x) if x is not None and np.isfinite(x) else None
-
-
-def latest_forecast(log: pd.DataFrame) -> dict | None:
-    """The latest live forecast and the live track record, for pchambet.github.io.
-
-    The portfolio site reads ``forecast/latest.json`` from this page's origin; this
-    keeps the contract in one tested place. Percentages are in percent, demand in MW.
-    """
-    issued = log[log["kind"] == "live"] if not log.empty else log
-    if issued.empty:
-        return None
-    day = issued["day"].max()
-    latest = issued[issued["day"] == day].sort_values("time")
-    utc = "%Y-%m-%dT%H:%M:%SZ"
-    points = [
-        {
-            "t": pd.Timestamp(r.time).tz_convert("UTC").strftime(utc),
-            "p50": _num(r.point),
-            "lo80": _num(r.lo80),
-            "hi80": _num(r.hi80),
-            "lo95": _num(r.lo95),
-            "hi95": _num(r.hi95),
-            "bench": _num(r.rte_j1),
-        }
-        for r in latest.itertuples()
-    ]
-    rec = live.track_record(log)
-    track = {"days": rec["days"]}
-    if rec["days"]:
-        track.update(
-            coverage80=_num(rec["coverage80"]),
-            coverage95=_num(rec["coverage95"]),
-            mape=_num(rec["mape"] * 100),
-            mape_bench=_num(rec["mape_rte"] * 100),
-            first_day=rec["first_day"],
-            last_day=rec["last_day"],
-        )
-    return {
-        "issued_at": pd.Timestamp(latest["issued_at"].iloc[0]).tz_convert("UTC").strftime(utc),
-        "target_date": f"{day:%Y-%m-%d}",
-        "unit": "MW",
-        "points": points,
-        "track_record": track,
-    }
-
-
 def build() -> str:
     d = _load()
     s = d["summary"]
@@ -589,7 +534,7 @@ def build() -> str:
     info = s["information_sets"]
     now = pd.Timestamp.now(tz="UTC")
     live_html, live_fig, has_record = _live_section(live.read_log(), now)
-    live_block = f"\n<h2>Tomorrow</h2>\n{live_html}\n"
+    live_block = f"\n<h2>Tomorrow</h2>\n{live_html}\n" if live_html else ""
     rt = d["rte_bias"].set_index("segment").loc["real-time feed"]
     filled, filled_span = _filled_text(s["gap_filled_forecast_hours"])
     figs = {
@@ -656,10 +601,6 @@ def build() -> str:
     config.SITE.mkdir(parents=True, exist_ok=True)
     out = config.SITE / "index.html"
     out.write_text(page)
-    latest = latest_forecast(live.read_log())
-    if latest is not None:
-        (config.SITE / "forecast").mkdir(exist_ok=True)
-        (config.SITE / "forecast" / "latest.json").write_text(json.dumps(latest, allow_nan=False))
     update_readme(s, d["intervals"])
     return str(out)
 

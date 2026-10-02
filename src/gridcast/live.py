@@ -1,4 +1,4 @@
-"""The daily live job: forecast tomorrow, keep a public log, score it honestly.
+"""The live job: forecast tomorrow, keep a forecast log, score it honestly.
 
 The job is stateless apart from the forecast log. Each run
 

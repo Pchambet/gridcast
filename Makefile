@@ -14,7 +14,7 @@ run:  ## backtest, evaluate, figures (~30 min on 3 cores)
 report:  ## build site/index.html and refresh README tables
 	uv run gridcast report
 
-live:  ## simulate the daily job: refresh data, forecast tomorrow, rebuild the page
+live:  ## refresh data, forecast tomorrow, score past forecasts, rebuild the page
 	uv run gridcast data --refresh
 	uv run gridcast live
 	uv run gridcast report
