@@ -698,5 +698,87 @@
         "rolling30_min": 0.83056
       }
     }
+  },
+  "months_ahead_of_rte": {
+    "months": 53,
+    "ahead": 17,
+    "list": [
+      "2022-06",
+      "2022-08",
+      "2022-09",
+      "2022-10",
+      "2023-06",
+      "2023-07",
+      "2023-09",
+      "2023-10",
+      "2024-06",
+      "2024-07",
+      "2024-08",
+      "2024-09",
+      "2025-06",
+      "2025-08",
+      "2025-09",
+      "2025-10",
+      "2026-06"
+    ],
+    "calendar_months": [
+      6,
+      7,
+      8,
+      9,
+      10
+    ]
+  },
+  "aci_capped_days": {
+    "split_static_aci@80": 0,
+    "split_static_aci@95": 0,
+    "cqr_rolling_aci@80": 0,
+    "cqr_rolling_aci@95": 26
+  },
+  "gap_filled_forecast_hours": {
+    "hours": 516,
+    "first": "2023-12-30 00:00:00+00:00",
+    "last": "2024-01-20 11:00:00+00:00"
+  },
+  "information_sets": {
+    "published": {
+      "mape": 0.01946,
+      "qr_raw_coverage80": 0.55572,
+      "qr_raw_width80_mw": 2007.93272,
+      "cqr_rolling_aci_coverage80": 0.80027,
+      "cqr_rolling_aci_width80_mw": 3436.47308,
+      "cqr_rolling_aci_winkler80_mw": 4823.11485,
+      "qr_raw_coverage95": 0.81937,
+      "qr_raw_width95_mw": 3792.76614,
+      "cqr_rolling_aci_coverage95": 0.94976,
+      "cqr_rolling_aci_width95_mw": 5982.98037,
+      "cqr_rolling_aci_winkler95_mw": 7329.21259
+    },
+    "oracle weather": {
+      "mape": 0.01852,
+      "qr_raw_coverage80": 0.57614,
+      "qr_raw_width80_mw": 2011.30138,
+      "cqr_rolling_aci_coverage80": 0.7997,
+      "cqr_rolling_aci_width80_mw": 3227.39429,
+      "cqr_rolling_aci_winkler80_mw": 4568.31732,
+      "qr_raw_coverage95": 0.83789,
+      "qr_raw_width95_mw": 3800.93622,
+      "cqr_rolling_aci_coverage95": 0.94937,
+      "cqr_rolling_aci_width95_mw": 5550.84003,
+      "cqr_rolling_aci_winkler95_mw": 6880.92987
+    },
+    "ERA5 delayed as live": {
+      "mape": 0.01949,
+      "qr_raw_coverage80": 0.5553,
+      "qr_raw_width80_mw": 2011.73981,
+      "cqr_rolling_aci_coverage80": 0.80032,
+      "cqr_rolling_aci_width80_mw": 3442.05908,
+      "cqr_rolling_aci_winkler80_mw": 4828.67919,
+      "qr_raw_coverage95": 0.81968,
+      "qr_raw_width95_mw": 3801.85111,
+      "cqr_rolling_aci_coverage95": 0.94983,
+      "cqr_rolling_aci_width95_mw": 5999.67476,
+      "cqr_rolling_aci_winkler95_mw": 7347.8483
+    }
   }
 }

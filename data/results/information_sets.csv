@@ -1,0 +1,4 @@
+variant,mape,qr_raw_coverage80,qr_raw_width80_mw,cqr_rolling_aci_coverage80,cqr_rolling_aci_width80_mw,cqr_rolling_aci_winkler80_mw,qr_raw_coverage95,qr_raw_width95_mw,cqr_rolling_aci_coverage95,cqr_rolling_aci_width95_mw,cqr_rolling_aci_winkler95_mw
+published,0.0194609,0.555716,2007.93,0.800269,3436.47,4823.11,0.819374,3792.77,0.949757,5982.98,7329.21
+oracle weather,0.0185218,0.576139,2011.3,0.799701,3227.39,4568.32,0.837886,3800.94,0.94937,5550.84,6880.93
+ERA5 delayed as live,0.0194874,0.555303,2011.74,0.80032,3442.06,4828.68,0.819684,3801.85,0.949835,5999.67,7347.85
