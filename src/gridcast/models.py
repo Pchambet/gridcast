@@ -1,4 +1,4 @@
-"""Point and quantile gradient-boosting models plus the two reference forecasts."""
+"""Point and quantile gradient-boosting models, and the online level correction."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class DemandModel:
 
     quantiles: tuple[float, ...] = config.QUANTILES
     params: dict = field(default_factory=lambda: dict(config.LGBM_PARAMS))
-    rounds: int = config.LGBM_ROUNDS
+    rounds: int = field(default_factory=lambda: config.LGBM_ROUNDS)
     boosters: dict[str, lgb.Booster] = field(default_factory=dict)
 
     def fit(self, frame: pd.DataFrame) -> DemandModel:
@@ -53,20 +53,16 @@ def qcol(q: float) -> str:
     return f"q{q:.3f}"
 
 
-def seasonal_naive(frame: pd.DataFrame) -> pd.Series:
-    """Same local hour one week earlier: the floor any model must beat."""
-    return frame["load_d7"]
-
-
 def bias_adjusted(
     forecast: pd.Series, actual: pd.Series, window_days: int = 28, delay_days: int = 2
 ) -> pd.Series:
     """Subtract a forecast's own trailing mean error at the same local hour.
 
     Only errors at least ``delay_days`` old enter the correction, so it is computable at
-    issue time. Used to make RTE's J-1 forecast comparable with the consolidated demand
-    series: since 2023 the consolidated values sit ~2% above the real-time measure that
-    RTE forecasts, a level offset that says nothing about forecasting skill.
+    issue time. Since 2023 RTE's published J-1 runs about 2% below the consolidated
+    demand series it is scored against (``data/results/rte_bias.csv``). Public data
+    cannot tell whether that gap is definitional (the consolidated and real-time files
+    never overlap) or forecast error, so both forecasters get this same correction.
     """
     err = (forecast - actual).dropna()
     hours = forecast.index.tz_convert("Europe/Paris").hour

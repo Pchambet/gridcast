@@ -28,7 +28,8 @@ def _evaluate(_: argparse.Namespace) -> None:
     result = evaluate.run(data.load_hourly(), backtest.load_predictions())
     ev = result["point"]["evaluation"]
     print(
-        f"MAPE gridcast {ev['point']['mape']:.2%} | RTE {ev['rte_j1']['mape']:.2%} | "
+        f"MAPE gridcast {ev['point']['mape']:.2%} | RTE J-1 level-corrected "
+        f"{ev['rte_j1_adj']['mape']:.2%} (as published {ev['rte_j1']['mape']:.2%}) | "
         f"naive {ev['naive']['mape']:.2%}"
     )
 

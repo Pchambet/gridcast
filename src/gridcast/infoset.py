@@ -7,6 +7,7 @@ the project (feature building, conformal feedback, the live job) derives its not
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
 
 import numpy as np
@@ -49,7 +50,7 @@ def target_hours(day: date | pd.Timestamp) -> pd.DatetimeIndex:
     return pd.date_range(start, end, freq="h", inclusive="left", name="time")
 
 
-def target_hours_many(days) -> pd.DatetimeIndex:
+def target_hours_many(days: Iterable[date | pd.Timestamp]) -> pd.DatetimeIndex:
     """Union of :func:`target_hours` over ``days``, sorted."""
     wanted = pd.DatetimeIndex([pd.Timestamp(_as_date(d)) for d in days]).unique()
     if len(wanted) == 0:

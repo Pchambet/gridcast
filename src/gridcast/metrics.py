@@ -13,8 +13,13 @@ import numpy as np
 import pandas as pd
 
 
+def ape(y: np.ndarray, yhat: np.ndarray) -> np.ndarray:
+    """Absolute percentage error per observation (as a fraction)."""
+    return np.abs(np.asarray(yhat) - np.asarray(y)) / np.abs(np.asarray(y))
+
+
 def mape(y: np.ndarray, yhat: np.ndarray) -> float:
-    return float(np.mean(np.abs(yhat - y) / np.abs(y)))
+    return float(np.mean(ape(y, yhat)))
 
 
 def rmse(y: np.ndarray, yhat: np.ndarray) -> float:
@@ -25,12 +30,18 @@ def mae(y: np.ndarray, yhat: np.ndarray) -> float:
     return float(np.mean(np.abs(yhat - y)))
 
 
+def hits(y: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """True where the outcome falls inside the closed interval [lo, hi].
+
+    A missing bound counts as a miss, so callers must drop rows without an interval
+    before scoring rather than let them bias coverage down.
+    """
+    y, lo, hi = np.asarray(y), np.asarray(lo), np.asarray(hi)
+    return (y >= lo) & (y <= hi)
+
+
 def coverage(y: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> float:
-    return float(np.mean((y >= lo) & (y <= hi)))
-
-
-def width(lo: np.ndarray, hi: np.ndarray) -> float:
-    return float(np.mean(hi - lo))
+    return float(np.mean(hits(y, lo, hi)))
 
 
 def interval_score(y: np.ndarray, lo: np.ndarray, hi: np.ndarray, alpha: float) -> np.ndarray:

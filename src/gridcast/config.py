@@ -38,6 +38,11 @@ PUBLICATION_LAG = pd.Timedelta(hours=1)
 # d2 (always available) otherwise. This never uses a run finished after issue time.
 RUN_AVAILABILITY_DELAY = pd.Timedelta(hours=4)
 
+# ERA5 reanalysis (the "observed" temperature) is published days late: on the live feed
+# its last hour was 5.5 days before the issue time. The backtest uses the complete
+# reanalysis; an ablation masks this window to measure what the live job loses.
+ERA5_DELAY = pd.Timedelta(hours=132)
+
 # --- Study periods -------------------------------------------------------------------
 HISTORY_START = pd.Timestamp("2012-01-01")
 BACKTEST_START = pd.Timestamp("2021-04-01")  # first month with archived day-ahead forecasts
@@ -69,6 +74,9 @@ LGBM_PARAMS: dict = {
     "num_threads": 3,
     "verbose": -1,
     "seed": 7,
+    # Bit-identical refits across runs and machines (at a small speed cost).
+    "deterministic": True,
+    "force_row_wise": True,
 }
 LGBM_ROUNDS = 300
 LGBM_MAX_BIN = 127
@@ -85,7 +93,6 @@ ECO2MIX_DEF = "eco2mix-national-cons-def"
 ECO2MIX_TR = "eco2mix-national-tr"
 OPEN_METEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
-OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 FORECAST_MODELS = ("gfs_seamless", "jma_seamless")  # primary, gap-filler
 
 

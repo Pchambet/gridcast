@@ -15,6 +15,7 @@ dependencies = [
     "plotly>=7.1.0",
     "pyarrow>=25.0.1",
     "requests>=2.34.2",
+    "scipy>=1.18.1",
 ]
 
 [project.scripts]
@@ -26,6 +27,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
@@ -40,3 +42,10 @@ extend-select = ["I", "B", "UP", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.mypy]
+files = ["src"]
+python_version = "3.12"
+disallow_untyped_defs = true
+# pandas, plotly and lightgbm ship no type information: treat them as untyped.
+ignore_missing_imports = true

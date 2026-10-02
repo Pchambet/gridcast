@@ -19,7 +19,7 @@ def test_interval_score_hand_computed():
     # width 8; misses of 2 below and 2 above, penalised by 2 / 0.2 = 10.
     np.testing.assert_allclose(metrics.interval_score(y, lo, hi, 0.2), [8.0, 28.0, 28.0])
     assert metrics.coverage(y, lo, hi) == pytest.approx(1 / 3)
-    assert metrics.width(lo, hi) == 8.0
+    assert metrics.hits(y, lo, hi).tolist() == [True, False, False]
 
 
 def test_pinball_hand_computed():

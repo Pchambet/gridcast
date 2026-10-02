@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gridcast.models import bias_adjusted, level_correct, qcol
+from gridcast.features import FEATURES
+from gridcast.models import DemandModel, bias_adjusted, level_correct, qcol
 
 
 def _hourly(days: int) -> pd.DatetimeIndex:
@@ -43,3 +44,29 @@ def test_level_correction_shifts_point_and_quantiles_together():
     np.testing.assert_allclose(out.loc[late, qcol(0.9)] - out.loc[late, "point"], 1000.0)
     assert (out["point_raw"] == 50_800.0).all()
     assert (out.loc[~late, "point"].iloc[:24] == 50_800.0).all()  # no history yet: untouched
+
+
+def test_demand_model_recovers_a_linear_temperature_response():
+    # Ground truth: load falls 1.5 GW per degree, other features are pure noise.
+    rng = np.random.default_rng(0)
+    n = 4000
+
+    def sample(size: int) -> pd.DataFrame:
+        frame = pd.DataFrame(rng.normal(0, 1, (size, len(FEATURES))), columns=FEATURES)
+        frame["temp"] = rng.uniform(-5, 30, size)
+        frame["load"] = 60_000 - 1_500 * frame["temp"] + rng.normal(0, 800, size)
+        return frame
+
+    model = DemandModel(quantiles=(0.1, 0.9)).fit(sample(n))  # production settings otherwise
+    test = sample(2000)
+    pred = model.predict(test)
+    truth = 60_000 - 1_500 * test["temp"]
+    assert np.sqrt(np.mean((pred["point"] - truth) ** 2)) < 400  # well under the noise
+    # Slope over the bulk of the range, read off the fitted point model.
+    grid = test.iloc[:1].loc[np.repeat(test.index[:1], 2)].reset_index(drop=True)
+    grid["temp"] = [5.0, 20.0]
+    slope = np.diff(model.predict(grid)["point"].to_numpy())[0] / 15.0
+    assert slope == pytest.approx(-1_500, rel=0.1)
+    # Independently fitted quantiles are returned in order (no crossing).
+    qs = pred[[qcol(0.1), qcol(0.9)]].to_numpy()
+    assert (np.diff(qs, axis=1) >= 0).all()
