@@ -1,0 +1,49 @@
+period,method,label,level,coverage,coverage_lo,coverage_hi,width_mw,winkler_mw,pinball_mw,rolling30_within_5pp,rolling30_min
+evaluation,qr_raw,"Quantile LightGBM, uncalibrated",0.8,0.555716,0.53905,0.572629,2007.93,5494.4,274.72,0,0.363889
+evaluation,qr_raw,"Quantile LightGBM, uncalibrated",0.95,0.819374,0.804691,0.83336,3792.77,8779.29,109.741,0.111672,0.654167
+evaluation,split_static,"Split conformal, static",0.8,0.822498,0.799232,0.843222,3386.48,5165.87,258.293,0.122397,0.5
+evaluation,split_static,"Split conformal, static",0.95,0.957658,0.947711,0.965898,6238.08,7967.26,99.5907,0.529968,0.780556
+evaluation,split_static_aci,Split conformal + ACI,0.8,0.805716,0.785213,0.823604,3189.11,4890.77,244.539,0.380442,0.484722
+evaluation,split_static_aci,Split conformal + ACI,0.95,0.95252,0.941972,0.962294,5752.14,7592.22,94.9027,0.701577,0.722222
+evaluation,split_rolling,"Split conformal, rolling 90 d",0.8,0.797144,0.773803,0.817653,3226.53,5019.08,250.954,0.293375,0.426389
+evaluation,split_rolling,"Split conformal, rolling 90 d",0.95,0.938655,0.92575,0.950326,5494.82,7731.47,96.6433,0.66877,0.675
+evaluation,cqr_rolling,"CQR, rolling 90 d",0.8,0.804477,0.786345,0.821296,3350.12,4848.78,242.439,0.420189,0.490278
+evaluation,cqr_rolling,"CQR, rolling 90 d",0.95,0.947227,0.936767,0.956326,5529.28,7144.95,89.3119,0.839117,0.768056
+evaluation,cqr_rolling_aci,CQR rolling + ACI,0.8,0.800269,0.783829,0.815902,3436.47,4823.11,241.156,0.49653,0.543056
+evaluation,cqr_rolling_aci,CQR rolling + ACI,0.95,0.949757,0.941196,0.958023,5982.98,7329.21,91.6152,0.842271,0.830556
+pre-crisis,qr_raw,"Quantile LightGBM, uncalibrated",0.8,0.5128,0.461295,0.562922,1512.42,4736.83,236.841,0,0.381944
+pre-crisis,qr_raw,"Quantile LightGBM, uncalibrated",0.95,0.791939,0.740543,0.839878,2950.02,8225.81,102.823,0,0.679167
+pre-crisis,split_static,"Split conformal, static",0.8,0.866558,0.788383,0.929268,3386.43,4678.19,233.909,0.0725806,0.540278
+pre-crisis,split_static,"Split conformal, static",0.95,0.972495,0.944906,0.992765,6238.08,7556.77,94.4596,0.193548,0.859722
+pre-crisis,split_static_aci,Split conformal + ACI,0.8,0.900054,0.864092,0.93323,3444.82,4165.61,208.28,0.0403226,0.781944
+pre-crisis,split_static_aci,Split conformal + ACI,0.95,0.989924,0.974266,1,6303.29,6924.08,86.551,0.346774,0.961111
+pre-crisis,split_rolling,"Split conformal, rolling 90 d",0.8,0.908224,0.87182,0.942688,3734.32,4392.29,219.615,0.0483871,0.780556
+pre-crisis,split_rolling,"Split conformal, rolling 90 d",0.95,0.984477,0.9684,0.995859,6084.34,6808.07,85.1009,0.475806,0.954167
+pre-crisis,cqr_rolling,"CQR, rolling 90 d",0.8,0.883715,0.846949,0.917999,3324.96,4008.02,200.401,0.129032,0.793056
+pre-crisis,cqr_rolling,"CQR, rolling 90 d",0.95,0.982026,0.966227,0.994306,5492.59,6144.39,76.8049,0.991935,0.966667
+pre-crisis,cqr_rolling_aci,CQR rolling + ACI,0.8,0.838508,0.798828,0.876081,3061.21,3911.73,195.587,0.620968,0.770833
+pre-crisis,cqr_rolling_aci,CQR rolling + ACI,0.95,0.964325,0.940358,0.98344,5074.32,5981.29,74.7661,1,0.930556
+crisis,qr_raw,"Quantile LightGBM, uncalibrated",0.8,0.551406,0.506383,0.601625,2311.28,6369.13,318.457,0,0.363889
+crisis,qr_raw,"Quantile LightGBM, uncalibrated",0.95,0.836839,0.80165,0.871631,4398.82,9520.04,119.001,0.165094,0.718056
+crisis,split_static,"Split conformal, static",0.8,0.769216,0.710808,0.828214,3386.49,5970.23,298.512,0.0801887,0.547222
+crisis,split_static,"Split conformal, static",0.95,0.938077,0.90681,0.966198,6238.08,9236.71,115.459,0.504717,0.798611
+crisis,split_static_aci,Split conformal + ACI,0.8,0.733635,0.686034,0.779229,3068.92,5682.25,284.113,0.429245,0.484722
+crisis,split_static_aci,Split conformal + ACI,0.95,0.9253,0.890376,0.957145,5923.56,9096.57,113.707,0.665094,0.722222
+crisis,split_rolling,"Split conformal, rolling 90 d",0.8,0.715156,0.660464,0.767473,3005.81,5792.2,289.61,0.415094,0.426389
+crisis,split_rolling,"Split conformal, rolling 90 d",0.95,0.897582,0.855432,0.935454,5322.29,9276.06,115.951,0.650943,0.675
+crisis,cqr_rolling,"CQR, rolling 90 d",0.8,0.751523,0.701023,0.801061,3508.61,5553.06,277.653,0.429245,0.490278
+crisis,cqr_rolling,"CQR, rolling 90 d",0.95,0.938864,0.910581,0.963322,5747.18,8067.84,100.848,0.853774,0.809722
+crisis,cqr_rolling_aci,CQR rolling + ACI,0.8,0.772557,0.726809,0.819343,3847.93,5549.87,277.493,0.419811,0.543056
+crisis,cqr_rolling_aci,CQR rolling + ACI,0.95,0.942599,0.918428,0.96634,7531.27,9282.11,116.026,0.740566,0.833333
+post-crisis,qr_raw,"Quantile LightGBM, uncalibrated",0.8,0.561706,0.541916,0.580964,2017.15,5438.75,271.938,0,0.383333
+post-crisis,qr_raw,"Quantile LightGBM, uncalibrated",0.95,0.819771,0.802578,0.836135,3793.15,8721.38,109.017,0.113691,0.654167
+post-crisis,split_static,"Split conformal, static",0.8,0.826144,0.802415,0.851444,3386.49,5089.1,254.455,0.134508,0.5
+post-crisis,split_static,"Split conformal, static",0.95,0.959163,0.949398,0.96887,6238.08,7802.09,97.5262,0.567654,0.780556
+post-crisis,split_static_aci,Split conformal + ACI,0.8,0.806392,0.785973,0.827039,3178.18,4845.28,242.264,0.405925,0.513889
+post-crisis,split_static_aci,Split conformal + ACI,0.95,0.952557,0.940832,0.963302,5655.53,7418.75,92.7344,0.742994,0.756944
+post-crisis,split_rolling,"Split conformal, rolling 90 d",0.8,0.797451,0.773301,0.821099,3201.79,4964.65,248.232,0.297038,0.454167
+post-crisis,split_rolling,"Split conformal, rolling 90 d",0.95,0.940013,0.926341,0.952871,5451.87,7582.45,94.7806,0.690953,0.720833
+post-crisis,cqr_rolling,"CQR, rolling 90 d",0.8,0.803757,0.783739,0.823045,3326.31,4832.25,241.612,0.447558,0.5
+post-crisis,cqr_rolling,"CQR, rolling 90 d",0.95,0.944383,0.932653,0.954864,5496.79,7110.9,88.8862,0.821457,0.768056
+post-crisis,cqr_rolling_aci,CQR rolling + ACI,0.8,0.800287,0.781334,0.81801,3412.61,4811.42,240.571,0.497198,0.584722
+post-crisis,cqr_rolling_aci,CQR rolling + ACI,0.95,0.949188,0.939449,0.957924,5831.53,7162.9,89.5363,0.843875,0.830556
