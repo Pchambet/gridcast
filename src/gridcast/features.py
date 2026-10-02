@@ -170,8 +170,18 @@ def forecast_temperature(table: pd.DataFrame, day: pd.Timestamp, times: pd.Datet
     return np.where(np.isnan(primary), backup, primary)
 
 
+def observed_or_proxy(table: pd.DataFrame) -> pd.Series:
+    """Observed temperature, with gaps filled by the bias-corrected 24 h-ahead forecast.
+
+    Reanalysis arrives ~5 days late, so in live operation the most recent days are only
+    known through forecasts issued a day before them. In the backtest window the
+    reanalysis is complete and this is exactly ``temp_obs``.
+    """
+    return table["temp_obs"].fillna(mos_correct(table)["temp_fc_d1"])
+
+
 def _observed_ewm(table: pd.DataFrame) -> pd.DataFrame:
-    obs = table["temp_obs"].interpolate(limit=6, limit_area="inside")
+    obs = observed_or_proxy(table)
     valid = obs.notna().to_numpy()
     out = {}
     for h in EWM_HALFLIVES_H:
@@ -179,7 +189,9 @@ def _observed_ewm(table: pd.DataFrame) -> pd.DataFrame:
         if valid.any():
             first = int(np.argmax(valid))
             last = len(valid) - int(np.argmax(valid[::-1]))
-            vals[first:last] = ewm(obs.to_numpy()[first:last], h)
+            # A forward fill is causal, so an isolated gap cannot leak future values; it
+            # only stops one missing hour from turning the whole recursion into NaN.
+            vals[first:last] = ewm(obs.iloc[first:last].ffill().to_numpy(), h)
         out[f"temp_ewm{h}"] = vals
     return pd.DataFrame(out, index=table.index)
 
@@ -290,7 +302,7 @@ def build_features(
     frame["temp_daymin"] = by_day.transform("min")
     for h in EWM_HALFLIVES_H:
         frame[f"temp_ewm{h}"] = temps[f"temp_ewm{h}"].to_numpy()
-    obs_daily = _daily_stat(to_local_wallclock(table["temp_obs"]), None, "mean")
+    obs_daily = _daily_stat(to_local_wallclock(observed_or_proxy(table)), None, "mean")
     frame["temp_d7_daymean"] = obs_daily.reindex(local_day - seven).to_numpy()
     frame["temp_delta7"] = frame["temp_daymean"] - frame["temp_d7_daymean"]
 
