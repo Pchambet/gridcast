@@ -15,6 +15,7 @@ import pandas as pd
 
 from gridcast import config, metrics
 from gridcast.conformal import METHOD_BY_NAME, METHODS, all_intervals, online_intervals
+from gridcast.features import mos_correct
 from gridcast.models import bias_adjusted, level_correct
 
 RESULTS = config.RESULTS
@@ -232,6 +233,26 @@ def rte_bias(table: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index()
 
 
+def temperature_bias(table: pd.DataFrame) -> pd.DataFrame:
+    """Mean error of the 24 h-ahead temperature forecast vs ERA5, raw and MOS-corrected."""
+    lo = config.BACKTEST_START.tz_localize(config.PARIS)
+    hi = (config.BACKTEST_END + pd.Timedelta(days=1)).tz_localize(config.PARIS)
+    corrected = mos_correct(table)["temp_fc_d1"]
+    window = (table.index >= lo) & (table.index < hi)
+    t = table[window]
+    hour = t.index.tz_convert(config.PARIS).hour
+    out = pd.DataFrame(
+        {
+            "raw_bias_c": (t["temp_fc_d1"] - t["temp_obs"]).groupby(hour).mean(),
+            "mos_bias_c": (corrected[window] - t["temp_obs"]).groupby(hour).mean(),
+            "raw_mae_c": (t["temp_fc_d1"] - t["temp_obs"]).abs().groupby(hour).mean(),
+            "mos_mae_c": (corrected[window] - t["temp_obs"]).abs().groupby(hour).mean(),
+        }
+    )
+    out.index.name = "local_hour"
+    return out.reset_index()
+
+
 def fan_week(pred: pd.DataFrame, intervals: pd.DataFrame, start: str, days: int = 7):
     lo_t = pd.Timestamp(start)
     sub = pred[(pred["day"] >= lo_t) & (pred["day"] < lo_t + pd.Timedelta(days=days))]
@@ -326,6 +347,9 @@ def run(table: pd.DataFrame, pred: pd.DataFrame, reps: int = config.BOOTSTRAP_RE
     )
     monthly_mape(rows).to_csv(RESULTS / "monthly_mape.csv", index=False, float_format="%.6g")
     monthly_demand(table).to_csv(RESULTS / "monthly_demand.csv", index=False, float_format="%.6g")
+    temperature_bias(table).to_csv(
+        RESULTS / "temperature_bias.csv", index=False, float_format="%.4g"
+    )
     rte_bias(table).to_csv(RESULTS / "rte_bias.csv", index=False, float_format="%.6g")
     fan_week(pred, intervals, FAN_WEEK).to_csv(
         RESULTS / "fan_week.csv", index=False, float_format="%.6g"

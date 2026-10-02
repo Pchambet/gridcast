@@ -533,8 +533,8 @@ def readme_tables(summary: dict, intervals: pd.DataFrame) -> dict[str, str]:
 def replace_blocks(text: str, blocks: dict[str, str]) -> str:
     """Replace the body between ``<!-- BEGIN:key -->`` and ``<!-- END:key -->`` markers."""
     for key, body in blocks.items():
-        pattern = re.compile(rf"(<!-- BEGIN:{key} -->\n).*?(\n<!-- END:{key} -->)", re.DOTALL)
-        text = pattern.sub(lambda m, b=body: m.group(1) + b + m.group(2), text)
+        pattern = re.compile(rf"(<!-- BEGIN:{key} -->\n)(?:.*?\n)?(<!-- END:{key} -->)", re.DOTALL)
+        text = pattern.sub(lambda m, b=body: m.group(1) + b + "\n" + m.group(2), text)
     return text
 
 
