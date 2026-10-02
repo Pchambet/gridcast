@@ -8,8 +8,12 @@ Three ingredients, combined into the methods compared in the report:
 * **Calibration set**: a frozen burn-in year ("static") or the trailing
   ``window_days`` of scored days ("rolling").
 * **ACI** (Gibbs & Candes, 2021): the miscoverage level used to read the calibration
-  quantile is updated online, alpha_{t+1} = alpha_t + gamma (alpha - err_t), which
-  guarantees long-run coverage under arbitrary distribution shift.
+  quantile is updated online, alpha_{t+1} = alpha_t + gamma (alpha - err_t). With
+  unclipped, per-step updates this bounds the long-run miscoverage under arbitrary
+  distribution shift. Here alpha_t is clipped when the quantile is read (an interval as
+  wide as the largest calibration score instead of an infinite one) and updates come
+  once per day with a two-day delay, so the bound only holds approximately; the
+  evaluation reports the empirical coverage and how often the clip binds.
 
 Feedback is delayed: errors of day D are only used from day D + ``delay_days`` on,
 because the forecast for D + 1 is issued before D is over.
@@ -95,14 +99,18 @@ def online_intervals(
 
     ``pred`` needs columns ``day``, ``load``, ``point`` and the quantile columns. Rows
     are hours; all hours of a day share one calibration quantile. Days without enough
-    calibration history get NaN bounds.
+    calibration history get NaN bounds. ``capped`` flags days whose requested level
+    exceeds what the calibration set can certify, so the interval was capped at the
+    largest calibration score (an ACI step past alpha_t <= 0 lands here).
     """
     pred = pred.sort_index()
     y = pred["load"].to_numpy()
     point = pred["point"].to_numpy()
     lo_q, hi_q = _bands(pred, level)
     if method.score == "raw":
-        return pd.DataFrame({"lo": lo_q, "hi": hi_q, "alpha_t": np.nan}, index=pred.index)
+        return pd.DataFrame(
+            {"lo": lo_q, "hi": hi_q, "alpha_t": np.nan, "capped": False}, index=pred.index
+        )
 
     base_lo, base_hi = (point, point) if method.score == "abs" else (lo_q, hi_q)
     scores = abs_scores(y, point) if method.score == "abs" else cqr_scores(y, lo_q, hi_q)
@@ -119,6 +127,7 @@ def online_intervals(
     lo = np.full(len(pred), np.nan)
     hi = np.full(len(pred), np.nan)
     alphas = np.full(len(pred), np.nan)
+    capped = np.zeros(len(pred), dtype=bool)
     produced: list[int] = []  # days with an interval whose error is not yet fed back
     for i, day in enumerate(day_index):
         newest = day - delay
@@ -140,19 +149,21 @@ def online_intervals(
         cal = np.concatenate([scores[starts[j] : ends[j]] for j in np.flatnonzero(in_cal)])
         cal = cal[~np.isnan(cal)]
         # ACI may push alpha_t outside (0, 1); clip to the widest/narrowest finite
-        # interval the calibration set supports instead of returning +-inf.
+        # interval the calibration set supports instead of returning +-inf. A finite
+        # interval can still miss, which is why the ACI bound becomes approximate.
         eff = float(np.clip(alpha_t, 1.0 / (len(cal) + 1), 1.0)) if method.aci else target
         q = conformal_quantile(cal, eff)
+        sl = slice(starts[i], ends[i])
+        capped[sl] = q == np.inf or eff > (alpha_t if method.aci else target)
         if q == np.inf:
             q = float(np.max(cal))
         elif q == -np.inf:
             q = float(np.min(cal))
-        sl = slice(starts[i], ends[i])
         lo[sl] = base_lo[sl] - q
         hi[sl] = base_hi[sl] + q
         alphas[sl] = alpha_t
         produced.append(i)
-    return pd.DataFrame({"lo": lo, "hi": hi, "alpha_t": alphas}, index=pred.index)
+    return pd.DataFrame({"lo": lo, "hi": hi, "alpha_t": alphas, "capped": capped}, index=pred.index)
 
 
 def all_intervals(pred: pd.DataFrame, gamma: float = config.ACI_GAMMA) -> pd.DataFrame:

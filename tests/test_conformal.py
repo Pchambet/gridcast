@@ -84,3 +84,22 @@ def test_feedback_is_delayed_two_days():
     shocked.loc[last_two, "load"] += 1000.0
     after = online_intervals(shocked, method, 0.8)
     pd.testing.assert_frame_equal(base, after)
+
+
+def test_aci_clips_to_the_widest_calibration_score_and_can_then_miss():
+    # A 50x variance jump overwhelms any calibration score. Gibbs & Candes would return
+    # an infinite interval once alpha_t <= 0; this implementation clips to the largest
+    # static score instead, so the interval stays finite and keeps missing.
+    scale = np.where(np.arange(300) < 120, 1.0, 50.0)
+    frame = _stream(300, scale=scale, seed=5)
+    static_end = pd.Timestamp("2020-03-31")
+    iv = online_intervals(
+        frame, METHOD_BY_NAME["split_static_aci"], 0.8, static_end=static_end, gamma=0.05
+    )
+    clipped = iv["alpha_t"] <= 0
+    assert clipped.any() and iv.loc[clipped, "capped"].all()
+    widest = (frame.loc[frame["day"] <= static_end, "load"] - 100.0).abs().max()
+    half_width = (iv["hi"] - iv["lo"])[clipped] / 2
+    np.testing.assert_allclose(half_width, widest)
+    covered = (frame["load"] >= iv["lo"]) & (frame["load"] <= iv["hi"])
+    assert covered[clipped].mean() < 0.5
