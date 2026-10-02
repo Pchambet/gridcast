@@ -242,6 +242,7 @@ TEMPLATE = """<!doctype html>
 <title>gridcast</title>
 <meta name="description" content="Day-ahead forecast of French electricity demand with
 calibrated conformal intervals, benchmarked against RTE and re-run daily.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Cpath d=%27M1 12 L5 6 L9 9 L15 2%27 stroke=%27%230d9488%27 stroke-width=%272.5%27 fill=%27none%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet"
  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
