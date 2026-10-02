@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -27,31 +28,34 @@ _SESSION = requests.Session()
 
 
 def _get(url: str, params: dict | None = None, timeout: int = 300) -> requests.Response:
-    """GET with retries; Open-Meteo answers 429 when the per-minute quota is spent."""
+    """GET with retries; Open-Meteo answers 429 when the per-minute quota is spent.
+
+    Every retry is logged, so a stalled scheduled job shows why it is waiting, and the
+    last error is chained to the final exception.
+    """
+    last: Exception | str = "no attempt"
     for attempt in range(8):
         try:
             resp = _SESSION.get(url, params=params, timeout=timeout)
-        except requests.RequestException:
-            time.sleep(10 * (attempt + 1))
-            continue
-        if resp.status_code == 429:
-            time.sleep(65)
-            continue
-        if resp.status_code >= 500:
-            time.sleep(10 * (attempt + 1))
-            continue
-        resp.raise_for_status()
-        return resp
-    raise RuntimeError(f"giving up on {url} after repeated failures")
+        except requests.RequestException as exc:
+            last, wait = exc, 10 * (attempt + 1)
+        else:
+            if resp.status_code < 500 and resp.status_code != 429:
+                resp.raise_for_status()
+                return resp
+            last = f"HTTP {resp.status_code}"
+            wait = 65 if resp.status_code == 429 else 10 * (attempt + 1)
+        print(f"  retry {attempt + 1}/8 in {wait} s: {last} ({url})", flush=True)
+        time.sleep(wait)
+    cause = last if isinstance(last, Exception) else None
+    raise RuntimeError(f"giving up on {url} after repeated failures: {last}") from cause
 
 
 # --- Demand ---------------------------------------------------------------------------
 
 
-def download_eco2mix(dataset: str, path, where: str | None = None) -> None:
+def download_eco2mix(dataset: str, path: Path) -> None:
     params = {"select": "date_heure,consommation,prevision_j1,prevision_j"}
-    if where:
-        params["where"] = where
     resp = _get(config.ODRE_EXPORT.format(dataset=dataset), params=params)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(resp.content)
@@ -147,7 +151,7 @@ def fetch_forecasts(city: config.City, start: date, end: date, model: str) -> pd
     return frame
 
 
-def _merge_cached(path, new: pd.DataFrame) -> pd.DataFrame:
+def _merge_cached(path: Path, new: pd.DataFrame) -> pd.DataFrame:
     if path.exists():
         old = pd.read_parquet(path)
         new = new.combine_first(old)
@@ -191,19 +195,22 @@ def fetch_weather(refresh: bool = False, today: date | None = None) -> None:
 def _fill_gaps(city: config.City, primary: pd.DataFrame) -> pd.DataFrame:
     """Fill holes in the primary model archive with the secondary model, day by day.
 
-    GFS day-ahead forecasts are missing for 2023-12-30 -> 2024-01-19 in the archive;
-    JMA GSM is the only archived model covering that window. Only backtest-relevant
-    gaps are filled, which keeps the API quota small.
+    GFS day-ahead forecasts are missing from late December 2023 to mid-January 2024 in
+    the archive; JMA GSM is the only archived model covering that window. Only
+    backtest-relevant gaps are filled, which keeps the API quota small. The ``filled``
+    column (1.0 where an hour holds a gap-filler value) keeps the substitution auditable.
     """
     past = primary.index < pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=2)
     in_scope = primary.index >= config.BACKTEST_START.tz_localize("UTC")
     missing = primary[past & in_scope].isna().any(axis=1)
     days = sorted({t.date() for t in missing[missing].index})
+    before = primary.isna()
     for lo, hi in _contiguous_ranges(days):
         print(f"  filling {city.name} {lo} -> {hi} from {config.FORECAST_MODELS[1]}")
         backup = fetch_forecasts(city, lo, hi, config.FORECAST_MODELS[1])
         primary = primary.combine_first(backup)
-    return primary
+    filled = (before & primary.notna().reindex(before.index)).any(axis=1)
+    return primary.assign(filled=filled.astype(float))
 
 
 def _contiguous_ranges(days: list[date]) -> list[tuple[date, date]]:
@@ -237,6 +244,10 @@ def national_temperature() -> pd.DataFrame:
         sub = fc[[f"{c}|{lead}" for c in weights.index]]
         sub.columns = list(weights.index)
         out = out.join(weighted_mean(sub, weights).rename(f"temp_{lead}"), how="outer")
+    flags = [f"{c}|filled" for c in weights.index if f"{c}|filled" in fc]
+    if flags:
+        # 1.0 where any city's forecast comes from the gap-filler model.
+        out = out.join(fc[flags].max(axis=1).rename("temp_fc_filled"), how="outer")
     return out
 
 
