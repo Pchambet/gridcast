@@ -49,9 +49,9 @@ jobs:
         run: |
           cd live-data
           git add forecast_log.csv
-          git -c user.name="github-actions[bot]" \
+          git diff --cached --quiet || git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "forecast issued $(date -u +%Y-%m-%d)" || echo "nothing to commit"
+              commit -m "forecast issued $(date -u +%Y-%m-%d)"
           git push origin HEAD:refs/heads/live-data
       - run: uv run gridcast report
       - uses: actions/upload-pages-artifact@v4

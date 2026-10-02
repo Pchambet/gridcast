@@ -12,6 +12,7 @@ def _forecast(day: str, point: float = 50_000.0) -> pd.DataFrame:
     ).tz_convert("UTC")
     frame = pd.DataFrame({"time": times, "day": pd.Timestamp(day), "hour": range(24)})
     frame["issued_at"] = times[0] - pd.Timedelta(hours=12)
+    frame["kind"] = "live"
     frame["point"] = point
     frame["point_raw"] = point
     for q, off in zip((0.025, 0.1, 0.9, 0.975), (-3000, -1500, 1500, 3000), strict=True):
@@ -83,3 +84,70 @@ def test_calibrated_intervals_widen_when_history_is_noisier():
     calm, wild = bands(500.0), bands(4000.0)
     assert (calm["hi80"] - calm["lo80"]).mean() < (wild["hi80"] - wild["lo80"]).mean()
     assert ((wild["hi95"] - wild["lo95"]) > (wild["hi80"] - wild["lo80"])).all()
+
+
+def test_track_record_skips_hours_without_bands_and_hindcasts():
+    scored = _forecast("2026-10-03")
+    scored["load"], scored["rte_j1"] = 50_000.0, 50_000.0  # every hour inside the bands
+    scored.loc[:5, ["lo80", "hi80", "lo95", "hi95"]] = np.nan
+    hind = _forecast("2026-10-02")
+    hind["kind"] = "hindcast"
+    hind["load"], hind["rte_j1"] = 99_000.0, 50_000.0  # would be misses if counted
+    rec = live.track_record(pd.concat([hind, scored], ignore_index=True))
+    assert rec["days"] == 1
+    assert rec["coverage80"] == 1.0 and rec["coverage95"] == 1.0
+    assert rec["hours_without_bands"] == 6
+
+
+def _seed(table: pd.DataFrame, first: str, last: str) -> pd.DataFrame:
+    """Backtest-like rows: a decent point forecast with quantiles around it."""
+    rng = np.random.default_rng(5)
+    rows = table.loc[
+        pd.Timestamp(first).tz_localize("Europe/Paris") : pd.Timestamp(last).tz_localize(
+            "Europe/Paris"
+        )
+        + pd.Timedelta(hours=23)
+    ]
+    seed = pd.DataFrame(index=rows.index)
+    seed["day"] = rows.index.tz_convert("Europe/Paris").tz_localize(None).normalize()
+    seed["load"] = rows["load"]
+    seed["point"] = rows["load"] + rng.normal(0, 800, len(rows))
+    seed["point_raw"] = seed["point"]
+    for q, z in zip((0.025, 0.1, 0.9, 0.975), (-1.96, -1.28, 1.28, 1.96), strict=True):
+        seed[qcol(q)] = seed["point"] + z * 700
+    return seed
+
+
+def test_stale_seed_fails_loudly_instead_of_publishing_nan_bands(table, fast_model):
+    # The seed ends 70 days before the target day: fewer than 30 calibration days left.
+    seed = _seed(table, "2023-10-01", "2023-12-31")
+    empty = pd.DataFrame(columns=live.LOG_COLUMNS)
+    with pytest.raises(RuntimeError, match="no calibrated interval"):
+        live.forecast_day(table, pd.Timestamp("2024-03-10"), empty, seed)
+
+
+def test_hindcast_closes_the_gap_so_a_late_first_run_gets_finite_bands(table, fast_model):
+    seed = _seed(table, "2023-10-01", "2023-12-31")
+    day = pd.Timestamp("2024-03-10")
+    log = pd.DataFrame(columns=live.LOG_COLUMNS)
+    missed = live.hindcast(table, day, log, seed)
+    gap = pd.date_range("2024-01-01", "2024-03-09")
+    assert set(missed["day"]) == set(gap) and (missed["kind"] == "hindcast").all()
+    log = live.append_forecast(log, missed)
+    new = live.forecast_day(table, day, log, seed)
+    assert np.isfinite(new[live.BANDS].to_numpy(dtype=float)).all()
+    assert (new["lo95"] < new["lo80"]).all() and (new["hi80"] < new["hi95"]).all()
+    assert (new["kind"] == "live").all()
+    # Once filled, nothing is missing any more, and hindcasts never count as live.
+    assert live.missing_days(seed, log, day).empty
+    assert live.track_record(log)["days"] == 0
+
+
+def test_live_forecast_ignores_everything_after_issue_time(table, poison, fast_model):
+    seed = _seed(table, "2023-12-01", "2024-02-27")
+    day = pd.Timestamp("2024-03-01")
+    log = pd.DataFrame(columns=live.LOG_COLUMNS)
+    clean = live.forecast_day(table, day, log, seed)
+    dirty = live.forecast_day(poison(table, day), day, log, seed)
+    cols = ["point_raw", "point", *live.QCOLS, *live.BANDS]
+    pd.testing.assert_frame_equal(clean[cols], dirty[cols])
