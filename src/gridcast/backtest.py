@@ -17,13 +17,20 @@ from gridcast.features import build_features
 from gridcast.models import DemandModel
 
 PREDICTIONS = config.INTERIM / "predictions.parquet"
+CHECKPOINTS = config.INTERIM / "backtest_months"
 
 
 def run_backtest(
     table: pd.DataFrame,
     start: pd.Timestamp = config.BACKTEST_START,
     end: pd.Timestamp = config.BACKTEST_END,
+    resume: bool = False,
 ) -> pd.DataFrame:
+    """Run all monthly refits; ``resume`` reuses months checkpointed by an interrupted run."""
+    if not resume:
+        for old in CHECKPOINTS.glob("*.parquet"):
+            old.unlink()
+    CHECKPOINTS.mkdir(parents=True, exist_ok=True)
     history_days = pd.date_range(config.HISTORY_START + pd.Timedelta(days=8), end, freq="D")
     observed = build_features(table, history_days, mode="observed")
     test_days = pd.date_range(start, end, freq="D")
@@ -32,6 +39,10 @@ def run_backtest(
 
     chunks = []
     for month in pd.period_range(start, end, freq="M"):
+        checkpoint = CHECKPOINTS / f"{month}.parquet"
+        if checkpoint.exists():
+            chunks.append(pd.read_parquet(checkpoint))
+            continue
         tic = time.perf_counter()
         first = month.start_time
         train = observed[observed["day"] <= first - pd.Timedelta(days=2)]
@@ -45,6 +56,7 @@ def run_backtest(
         pred["refit"] = first
         pred[["day", "hour", "load", "rte_j1"]] = rows[["day", "hour", "load", "rte_j1"]]
         pred["naive"] = rows["load_d7"]
+        pred.to_parquet(checkpoint)
         chunks.append(pred)
         print(f"  {month}: trained on {len(train):,} rows, {time.perf_counter() - tic:4.1f} s")
 

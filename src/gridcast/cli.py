@@ -15,10 +15,10 @@ def _data(args: argparse.Namespace) -> None:
     print(f"hourly table: {len(table):,} rows, {table.index.min()} -> {table.index.max()}")
 
 
-def _backtest(_: argparse.Namespace) -> None:
+def _backtest(args: argparse.Namespace) -> None:
     from gridcast import backtest, data
 
-    pred = backtest.run_backtest(data.load_hourly())
+    pred = backtest.run_backtest(data.load_hourly(), resume=args.resume)
     print(f"predictions: {len(pred):,} hours")
 
 
@@ -61,7 +61,9 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("data", help="download / refresh raw data and build the hourly table")
     p.add_argument("--refresh", action="store_true", help="re-fetch the growing sources")
     p.set_defaults(func=_data)
-    sub.add_parser("backtest", help="monthly rolling-origin backtest").set_defaults(func=_backtest)
+    p = sub.add_parser("backtest", help="monthly rolling-origin backtest")
+    p.add_argument("--resume", action="store_true", help="reuse checkpointed months")
+    p.set_defaults(func=_backtest)
     sub.add_parser("evaluate", help="metrics and result tables").set_defaults(func=_evaluate)
     sub.add_parser("figures", help="static README figures").set_defaults(func=_figures)
     sub.add_parser("report", help="build site/index.html").set_defaults(func=_report)
