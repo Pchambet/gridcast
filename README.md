@@ -1,6 +1,6 @@
 # gridcast
 
-Can a day-ahead forecast of French electricity demand publish uncertainty bands that stay honest through an energy crisis? Yes on average, only partly month to month, and here is the measured trade-off, re-run every day in public.
+Can a day-ahead forecast of French electricity demand publish uncertainty bands that stay honest through an energy crisis? On average yes, month to month only partly: a measured answer, plus a forecast re-issued every day in public.
 
 [![ci](https://github.com/Pchambet/gridcast/actions/workflows/ci.yml/badge.svg)](https://github.com/Pchambet/gridcast/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-0d9488.svg)](https://www.python.org/)
@@ -11,10 +11,11 @@ Can a day-ahead forecast of French electricity demand publish uncertainty bands 
 
 ## TL;DR
 
-- **Calibrated on average, by construction.** Over 38,732 hourly day-ahead forecasts (April 2022 to August 2026, scored out of sample), the published 80% and 95% intervals cover **80.0%** [78.4, 81.6] and **95.0%** [94.1, 95.8] of actual demand. The same quantile model without conformal calibration covers **55.6%** at nominal 80%.
-- **Average coverage hides seasonal failure.** A split-conformal interval calibrated once on April 2021 to March 2022 still covers 82.2% overall, but its trailing 30-day coverage is within ±5 pp of target only **12%** of the time (swinging from 50% to 100%). Rolling conformalized quantile regression with adaptive conformal inference (CQR + ACI) is on target **50%** of the time at 80% and **84%** at 95%, with a 7% lower interval (Winkler) score.
-- **The crisis is still hard.** Over September 2022 to March 2023 (in the crisis winter demand ran about 10% below its 2015-2019 level), the published 80% interval covered **77.3%**. A faster ACI step (γ = 0.1 instead of the pre-set 0.02) keeps 30-day coverage on target 82% of the time for 3% wider intervals.
-- **RTE's own forecast is more accurate, once compared fairly.** Scored naively, gridcast beats RTE's published J-1 forecast (1.95% vs 2.62% MAPE). That is an artefact: since 2023 RTE's forecast sits about 2% below the consolidated demand series, while it is unbiased on the real-time feed. With the same online level correction applied to both, RTE wins: **1.64%** vs **1.95%** MAPE (difference +0.30 pp, 95% CI [+0.21, +0.40]).
+- **Calibrated on average, by construction.** Over 38,732 hourly day-ahead forecasts (April 2022 to August 2026, scored out of sample), the published 80% and 95% intervals cover **80.0%** [78.4, 81.6] and **95.0%** [94.1, 95.8] of actual demand. The same quantile model without conformal calibration covers **55.6%** at nominal 80% (57.6% even when fed observed weather, so the weather-forecast mismatch explains little of it).
+- **Average coverage hides seasonal failure.** A split-conformal interval calibrated once on April 2021 to March 2022 still covers 82.2% overall, but its trailing 30-day coverage is within ±5 pp of target only **12%** of the time, swinging from 50% to 100%.
+- **Recalibrating on a rolling window does most of the repair.** Rolling 90-day conformalized quantile regression (CQR) is on target **42%** of the time at 80%; adding adaptive conformal inference (ACI) at the pre-set step lifts that to **50%**, for the same interval (Winkler) score (4.85 vs 4.82 GW), 7% below the frozen interval's. At 95%, where "on target" can only mean 30-day coverage ≥ 90%, ACI adds nothing (84% either way) and costs wider bands (5.53 to 5.98 GW) and a worse Winkler score (7.14 to 7.33 GW).
+- **The crisis is still hard.** Over September 2022 to March 2023, when demand ran about 10% below its 2015-2019 level (not weather-adjusted), the published 80% interval covered **77.3%**.
+- **RTE's own forecast is more accurate, once compared fairly.** Scored naively, both as produced, gridcast beats RTE's published J-1 forecast: 2.08% vs 2.62% MAPE. But since 2023 RTE's forecast runs about 2% below the consolidated series it is scored against, a gap public data cannot attribute to definitions or to forecast error. With the same online level correction applied to both, RTE wins: **1.64%** vs **1.95%** MAPE (difference +0.30 pp, 95% CI [+0.21, +0.40]). gridcast is still ahead in 17 of 53 months, all between June and October.
 
 ## Why it matters
 
@@ -29,12 +30,12 @@ flowchart LR
   C["Feature builder<br/>strict 12:00 D-1 information set"] --> D["LightGBM point + quantiles<br/>refit monthly"]
   D --> E["Online level correction<br/>(own 28-day error)"]
   E --> F["Conformal layer<br/>split / CQR / ACI, 2-day feedback delay"]
-  F --> G["Backtest 2021-04 to 2026-08<br/>+ daily live job"]
+  F --> G["Backtest 2021-04 to 2026-08<br/>(scored from 2022-04)<br/>+ daily live job"]
 ```
 
-1. **Information set.** The forecast for local day D is issued at 12:00 Europe/Paris on D-1. Demand is known up to 11:00 (one hour publication lag). Weather comes from an archive of forecasts issued 24 h and 48 h ahead: the 24 h value is used only if its model run finished at least 4 h before the issue time, otherwise the 48 h value. A test replaces every value unknowable at issue time with garbage and checks that the features do not move.
+1. **Information set.** The forecast for local day D is issued at 12:00 Europe/Paris on D-1. Demand is known up to 11:00 (one hour publication lag). Weather comes from an archive of forecasts issued 24 h and 48 h ahead: the 24 h value is used only if its model run finished at least 4 h before the issue time, otherwise the 48 h value. Tests replace every value unknowable at issue time with garbage and check that the features, the monthly backtest refit and the live forecast do not move. Two inputs are nevertheless better than what was available at the time; see the limitations.
 2. **Features.** Calendar and French holidays (including bridge days), demand on the local wall clock (same hour 2 and 7 days earlier, DST-safe), a holiday-aware similar-day anchor scaled by the latest week-over-week level drift, and a population-weighted national temperature from the ten largest metro areas with exponential smoothing for thermal inertia. Forecast temperatures are bias-corrected per hour on a trailing 60-day window: raw GFS runs up to 1.3 °C warm at night against ERA5, and the correction removes that bias and cuts night-time absolute error by about a quarter.
-3. **Model.** LightGBM (L2 point model + 2.5/10/90/97.5% quantiles), refit every month on all past days with observed weather, predicting with forecast weather. Hyperparameters fixed a priori; feature design chosen on 2019 to early 2021, before the backtest window.
+3. **Model.** LightGBM (L2 point model + 2.5/10/90/97.5% quantiles), refit every month on all past days with observed weather, predicting with forecast weather. Hyperparameters fixed a priori, not tuned. The features were designed knowing that French demand dropped in 2022 (the week-ratio feature exists to absorb such level shifts), so the backtest is not blind to that design choice.
 4. **Level correction.** The point forecast and its quantiles are shifted by their own mean error over the trailing 28 days at the same local hour, using errors at least two days old. RTE's forecast receives exactly the same treatment for the benchmark.
 5. **Conformal layer.** Six interval methods share the same forecasts: uncalibrated quantiles, split conformal (frozen or rolling 90 days), CQR (rolling 90 days), and ACI (Gibbs & Candès, 2021) on top of frozen split and rolling CQR. Errors of day D are fed back from D+2 on, since the forecast for D+1 is issued before D ends.
 6. **Evaluation.** April 2021 to March 2022 is a calibration burn-in; everything is scored on April 2022 to August 2026. Confidence intervals come from a week-block bootstrap (1,000 resamples), because hourly errors are strongly autocorrelated.
@@ -71,11 +72,11 @@ Every conformal variant fixes the gross under-coverage of raw quantile regressio
 | gridcast with observed weather (oracle) | 1.85% [1.76%, 1.95%] | 1.32 | 2.05% | +0.21 pp [+0.12, +0.30] |
 <!-- END:point-table -->
 
-RTE leads in every period; perfect weather would close about a third of the gap, the rest is inputs gridcast does not have (cloud cover, embedded solar, many more stations).
+RTE leads overall and in each of the three periods, though not significantly in the five pre-crisis months (+0.26 pp, 95% CI [-0.04, +0.58]), where the level correction even costs gridcast 0.12 pp (1.83% vs 1.71% uncorrected). gridcast beats the corrected RTE forecast in 17 of 53 months, all between June and October, when demand is flat and temperature-driven. Perfect weather would close about a third of the gap; the rest likely comes from richer inputs (cloud cover, embedded solar, many more stations), RTE's possibly later issue time, and model capacity.
 
 ![Monthly MAPE of gridcast and RTE](docs/figures/point_accuracy.png)
 
-**Adaptation speed.** The ACI step size γ is the one knob that trades local calibration for width:
+**Adaptation speed.** The ACI step size γ trades local calibration for width. Over 2022-2026, γ = 0.1 instead of the pre-set 0.02 keeps 80% coverage on target 82% of the time, for 3% wider intervals and a worse Winkler score (4.82 to 4.92 GW at 80%, 7.33 to 7.67 GW at 95%). Over the crisis alone it lifts 80% coverage from 77.3% to 79.7%, for 17% wider intervals and a 7% worse Winkler score. This is an in-sample sensitivity on the test window, not a validated choice, so the published method keeps γ = 0.02:
 
 ![Share of 30-day windows within 5 pp of target as a function of the ACI step size](docs/figures/gamma_frontier.png)
 
@@ -85,13 +86,13 @@ RTE leads in every period; perfect weather would close about a third of the gap,
 
 ![Day-ahead forecast and intervals during the December 2022 cold snap](docs/figures/fan_week.png)
 
-**Coverage is marginal, not conditional.** Nights are over-covered and afternoons under-covered; CQR narrows the spread across hours but does not remove it:
+**Coverage is marginal, not conditional.** Nights are over-covered and afternoons under-covered; with the same rolling window and no ACI, CQR scores narrow the spread across hours but do not remove it:
 
 ![Coverage of 80% intervals by hour of day](docs/figures/coverage_by_hour.png)
 
 ## Live forecast
 
-`.github/workflows/daily.yml` runs every day at 11:30 UTC: it refreshes the data, retrains, forecasts the next day with 80% and 95% intervals, appends the forecast to `forecast_log.csv` on the orphan branch `live-data`, scores every past forecast whose outcome is now published (coverage, MAPE against RTE's J-1 on the real-time feed), and redeploys the [report page](https://pchambet.github.io/gridcast/). The job is stateless: the conformal state is replayed from the log each day, so there is no hidden state to drift. `make live` runs the same job locally.
+`.github/workflows/daily.yml` runs every day at 11:30 UTC: it refreshes the data, retrains, forecasts the next day with 80% and 95% intervals, appends the forecast to `forecast_log.csv` on the orphan branch `live-data`, scores every past forecast whose outcome is now published (coverage, MAPE against RTE's J-1 on the real-time feed), and redeploys the [report page](https://pchambet.github.io/gridcast/). The job is stateless: the conformal state is replayed from the log each day, so there is no hidden state to drift. Days without a live forecast (before the first run, or after an outage) are hindcast with the backtest protocol and stored in the log as such, so calibration never runs dry; they are excluded from the track record, and the job fails rather than publish a forecast without intervals. `make live` runs the same job locally.
 
 ## Reproduce
 
@@ -102,7 +103,7 @@ make run       # backtest (65 monthly refits, 25-40 min on 3 cores) + evaluate +
 make report    # site/index.html, and refreshes the generated README tables
 ```
 
-`make test` runs the test suite offline in under a minute. All numbers above come from `data/results/` (committed) and are regenerated by `make run`; two independent runs of the full backtest produced identical results. The backtest window is frozen in `src/gridcast/config.py`, so newer data does not change them.
+`make test` runs the test suite offline in under a minute. All numbers above come from `data/results/` (committed) and are regenerated by `make run`. LightGBM runs in deterministic mode. On one machine, two full backtests (before and after that switch) produced forecasts identical to within 1e-7 MW and byte-identical result tables; other machines have not been checked. The backtest window is frozen in `src/gridcast/config.py`, so newer data does not change them.
 
 ## Repository layout
 
@@ -119,18 +120,21 @@ src/gridcast/
   evaluate.py    result tables and summary.json
   figures.py     README figures      report.py   report page
   live.py        daily job and forecast log
-tests/           information set, DST, conformal coverage, ACI under shift, live log
+tests/           leakage (features, backtest refit, live job), DST, conformal coverage,
+                 ACI under shift and clipping, model ground truth, live log and hindcast
 data/results/    small committed result tables
 docs/figures/    committed figures
 ```
 
 ## Methodology notes and limitations
 
-- **Weather inputs.** Only 2 m temperature has archived day-ahead forecasts before 2024 in the open archive (GFS from March 2021); cloud cover, wind and irradiance, which matter for lighting and embedded solar, are not used. Twenty days (30 Dec 2023 to 19 Jan 2024) are missing from the GFS archive and are filled with JMA forecasts, the only archived model covering them.
-- **Train/predict mismatch.** The model is trained on reanalysis (ERA5) temperature and predicts with forecasts. The conformal layer absorbs the extra error in the intervals; the point forecast pays for it (1.85% MAPE with observed weather vs 1.95%).
-- **RTE comparison.** RTE's consolidated demand and its J-1 forecast diverge by about 2% since 2023; whether that is definitional or forecast bias cannot be separated with public data, so both forecasters are level-corrected identically and both raw scores are reported. RTE's J-1 may be published later than 12:00 on D-1, which slightly favours RTE. The last two backtest months and the live track record are scored on the real-time feed, not the consolidated series the model is trained on.
-- **What the guarantee covers.** Conformal coverage here is marginal over hours. It is not conditional on hour, weather regime or season, and the hourly errors within a day are dependent, so the effective sample is closer to days than hours. The block bootstrap accounts for this in the confidence intervals.
-- **Pre-set choices.** γ = 0.02/day, the 90-day window and the 28-day level-correction window were fixed before scoring; the γ sensitivity is reported in full rather than tuned. The level correction was added after seeing that RTE's published forecast is biased against the consolidated series, and is applied symmetrically.
+- **The backtest knows more than the live job.** Demand lags, the level correction and conformal feedback use RTE's consolidated series, published months later; at issue time only the real-time vintage existed. That effect cannot be measured: the consolidated and real-time files do not overlap. Observed temperature before the issue time is ERA5 reanalysis, a proxy for station observations that arrives about 5.5 days late. Masking those days as the live job must changes almost nothing: MAPE 1.946% vs 1.949%, published 80% coverage 80.03% in both cases (`data/results/information_sets.csv`).
+- **Weather inputs.** Only 2 m temperature has archived day-ahead forecasts before 2024 in the open archive (GFS from March 2021); cloud cover, wind and irradiance, which matter for lighting and embedded solar, are not used. 516 hours (21.5 days, 30 Dec 2023 00:00 to 20 Jan 2024 11:00 UTC) are missing from the GFS archive and filled with JMA forecasts, the only archived model covering them; they are flagged in the hourly table.
+- **Train/predict mismatch.** The model is trained on reanalysis (ERA5) temperature and predicts with forecasts. The conformal layer absorbs the extra error in the intervals; the point forecast pays for it (1.85% MAPE with observed weather vs 1.95%). The uncalibrated quantiles ignore weather-forecast error by construction, but fed observed weather they still cover only 57.6% at nominal 80%.
+- **RTE comparison.** Since 2023 RTE's J-1 runs about 2% below the consolidated demand series, with a strong hour profile: -4.3% at midnight and around 15:00, +0.5% at 06:00 (`data/results/rte_bias_by_hour.csv`). On the only real-time data in the backtest (July-August 2026, 1,488 hours) its bias is +0.3%, too short to conclude. Whether the gap is definitional or forecast bias cannot be separated with public data, so both forecasters are level-corrected identically and both raw scores are reported. RTE's J-1 may be published later than 12:00 on D-1, which slightly favours RTE. The last two backtest months and the live track record are scored on the real-time feed, not the consolidated series the model is trained on.
+- **What the guarantee covers.** Conformal coverage here is marginal over hours. It is not conditional on hour, weather regime or season, and the hourly errors within a day are dependent, so the effective sample is closer to days than hours. The block bootstrap accounts for this in the confidence intervals. ACI's long-run bound (Gibbs & Candès) assumes unclipped, per-step updates; here alpha_t is clipped (the interval is capped at the largest calibration score, on 26 scored days for the published 95% interval) and updated once a day with a two-day delay, so the bound is only approximate. Empirically: 80.0% and 95.0%.
+- **"On target".** A 30-day window is on target within ±5 pp of nominal. At 95% that band is [90%, 100%], so it only flags under-coverage: on-target shares at 80% and 95% are not comparable.
+- **Pre-set choices.** γ = 0.02/day, the 90-day window and the 28-day level-correction window were fixed before scoring; the γ sensitivity is reported in full rather than tuned, and it is in-sample. The level correction was added after seeing that RTE's published forecast is biased against the consolidated series, and is applied symmetrically. The features were designed knowing that French demand dropped in 2022, and no development split is committed, so feature design is not out of sample.
 - **Population weights** for the national temperature use INSEE 2020 metropolitan-area populations (2017 census), rounded.
 - **Live timing.** The daily job runs at 11:30 UTC, after the 12:00 Paris issue time in winter (by 30 min) and summer (by 90 min); it enforces the demand cutoff, but its weather forecast may come from a run finished slightly after the nominal issue time.
 
