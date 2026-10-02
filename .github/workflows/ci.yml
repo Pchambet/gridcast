@@ -14,6 +14,9 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run mypy
       - run: uv run pytest -q
       - name: Report builds from committed results
         run: uv run gridcast report
+      - name: Generated README tables match the committed results
+        run: git diff --exit-code README.md

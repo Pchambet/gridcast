@@ -25,6 +25,7 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run mypy
 
 all: setup data run report
 
