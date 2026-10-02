@@ -13,6 +13,7 @@ def _forecast(day: str, point: float = 50_000.0) -> pd.DataFrame:
     frame = pd.DataFrame({"time": times, "day": pd.Timestamp(day), "hour": range(24)})
     frame["issued_at"] = times[0] - pd.Timedelta(hours=12)
     frame["point"] = point
+    frame["point_raw"] = point
     for q, off in zip((0.025, 0.1, 0.9, 0.975), (-3000, -1500, 1500, 3000), strict=True):
         frame[qcol(q)] = point + off
     frame[["lo80", "hi80", "lo95", "hi95"]] = [

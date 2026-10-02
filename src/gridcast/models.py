@@ -56,3 +56,41 @@ def qcol(q: float) -> str:
 def seasonal_naive(frame: pd.DataFrame) -> pd.Series:
     """Same local hour one week earlier: the floor any model must beat."""
     return frame["load_d7"]
+
+
+def bias_adjusted(
+    forecast: pd.Series, actual: pd.Series, window_days: int = 28, delay_days: int = 2
+) -> pd.Series:
+    """Subtract a forecast's own trailing mean error at the same local hour.
+
+    Only errors at least ``delay_days`` old enter the correction, so it is computable at
+    issue time. Used to make RTE's J-1 forecast comparable with the consolidated demand
+    series: since 2023 the consolidated values sit ~2% above the real-time measure that
+    RTE forecasts, a level offset that says nothing about forecasting skill.
+    """
+    err = (forecast - actual).dropna()
+    hours = forecast.index.tz_convert("Europe/Paris").hour
+    err_hours = err.index.tz_convert("Europe/Paris").hour
+    bias = pd.Series(np.nan, index=forecast.index)
+    for h in range(24):
+        trailing = err[err_hours == h].rolling(f"{window_days}D", min_periods=7).mean()
+        trailing.index = trailing.index + pd.Timedelta(days=delay_days)
+        target = forecast.index[hours == h]
+        bias[hours == h] = trailing.reindex(target, method="ffill").to_numpy()
+    return forecast - bias
+
+
+def level_correct(pred: pd.DataFrame) -> pd.DataFrame:
+    """Shift the point forecast and its quantiles by the model's own recent bias.
+
+    ``pred`` is indexed by UTC hour with the raw ``point``, quantile columns and the
+    realised ``load``. The raw point is kept as ``point_raw``. Exactly the same
+    correction is applied to RTE's forecast in the evaluation, so the comparison is
+    symmetric: both forecasters may learn from their own errors once these are known.
+    """
+    out = pred.sort_index().copy()
+    out["point_raw"] = out["point"]
+    offset = (out["point"] - bias_adjusted(out["point"], out["load"])).fillna(0.0)
+    cols = ["point", *[qcol(q) for q in config.QUANTILES if qcol(q) in out]]
+    out[cols] = out[cols].sub(offset, axis=0)
+    return out

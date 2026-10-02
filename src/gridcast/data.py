@@ -86,12 +86,18 @@ def to_hourly_demand(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_demand() -> pd.DataFrame:
-    """Hourly demand, consolidated values taking precedence over real-time ones."""
+    """Hourly demand, consolidated values taking precedence over real-time ones.
+
+    ``realtime`` flags hours that come from the real-time feed: RTE's J-1 forecast is
+    scored differently against the two series (see the README), so the distinction is kept.
+    """
     parts = []
-    for name in ("eco2mix_def.parquet", "eco2mix_tr.parquet"):
+    for name, realtime in (("eco2mix_def.parquet", 0.0), ("eco2mix_tr.parquet", 1.0)):
         path = RAW / name
         if path.exists():
-            parts.append(to_hourly_demand(pd.read_parquet(path)))
+            hourly = to_hourly_demand(pd.read_parquet(path))
+            hourly["realtime"] = realtime
+            parts.append(hourly)
     if not parts:
         raise FileNotFoundError("no eco2mix data in data/raw; run `gridcast data` first")
     hourly = parts[0]

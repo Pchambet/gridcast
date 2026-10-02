@@ -20,12 +20,12 @@ import pandas as pd
 from gridcast import config, infoset
 from gridcast.conformal import METHOD_BY_NAME, online_intervals
 from gridcast.features import build_features
-from gridcast.models import DemandModel, qcol
+from gridcast.models import DemandModel, bias_adjusted, qcol
 
 LOG_NAME = "forecast_log.csv"
 QCOLS = [qcol(q) for q in config.QUANTILES]
 LOG_COLUMNS = [
-    "time", "day", "hour", "issued_at", "point", *QCOLS,
+    "time", "day", "hour", "issued_at", "point_raw", "point", *QCOLS,
     "lo80", "hi80", "lo95", "hi95", "rte_j1", "load",
 ]  # fmt: skip
 
@@ -48,7 +48,8 @@ def read_log(path=None) -> pd.DataFrame:
 def write_log(log: pd.DataFrame, path=None) -> None:
     path = path or log_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    out = log[LOG_COLUMNS].sort_values("time")
+    out = log[LOG_COLUMNS].sort_values("time").copy()
+    out["day"] = pd.to_datetime(out["day"]).dt.strftime("%Y-%m-%d")
     out.to_csv(path, index=False, float_format="%.1f", date_format="%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -122,7 +123,19 @@ def forecast_day(table: pd.DataFrame, day: pd.Timestamp, log: pd.DataFrame, seed
     history = pd.concat(
         [frame for frame in (seed.reset_index(), log) if not frame.empty], ignore_index=True
     )
-    history = history[history["day"] < day][["time", "day", "load", "point", *QCOLS]]
+    history = history[history["day"] < day]
+
+    # Same online level correction as in the backtest: subtract the model's own mean
+    # error over the trailing 28 days (errors at least two days old).
+    raw = pd.concat([history.set_index("time")["point_raw"], pred.set_index("time")["point"]])
+    actual = pd.concat([history.set_index("time")["load"], pred.set_index("time")["load"]])
+    corrected = bias_adjusted(raw.sort_index(), actual.sort_index())
+    offset = (raw - corrected).reindex(pred["time"]).fillna(0.0).to_numpy()
+    pred["point_raw"] = pred["point"]
+    for col in ("point", *QCOLS):
+        pred[col] = pred[col] - offset
+
+    history = history[["time", "day", "load", "point", *QCOLS]]
     bands = calibrated_intervals(history, pred[["time", "day", "load", "point", *QCOLS]])
     for col in bands:
         pred[col] = bands[col].to_numpy()

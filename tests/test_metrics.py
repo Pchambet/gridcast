@@ -30,7 +30,9 @@ def test_pinball_hand_computed():
 
 def test_block_bootstrap_ci_contains_truth_and_respects_blocks():
     rng = np.random.default_rng(0)
-    times = pd.date_range("2023-01-01 23:00", periods=24 * 7 * 60, freq="h", tz="UTC")  # Mon 00:00 CET
+    times = pd.date_range(
+        "2023-01-01 23:00", periods=24 * 7 * 60, freq="h", tz="UTC"
+    )  # Mon 00:00 CET
     blocks = metrics.week_blocks(times)
     assert blocks.max() == 59
     # Strongly autocorrelated noise: one shared shock per week.

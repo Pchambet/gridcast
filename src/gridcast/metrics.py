@@ -69,6 +69,8 @@ def block_bootstrap(
     ``stat`` receives an integer index array into the evaluated rows, so any metric (or
     difference of metrics between two models on the same rows) can be bootstrapped.
     """
+    if len(blocks) == 0:
+        return np.nan, np.nan, np.nan
     rng = np.random.default_rng(seed)
     order = np.argsort(blocks, kind="stable")
     ids, starts = np.unique(blocks[order], return_index=True)

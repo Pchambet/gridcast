@@ -45,9 +45,7 @@ def _stream(n_days: int, scale: np.ndarray | float = 1.0, seed: int = 0) -> pd.D
 @pytest.mark.parametrize("level", [0.8, 0.95])
 def test_coverage_is_nominal_on_exchangeable_data(name, level):
     frame = _stream(400, seed=1)
-    iv = online_intervals(
-        frame, METHOD_BY_NAME[name], level, static_end=pd.Timestamp("2020-03-31")
-    )
+    iv = online_intervals(frame, METHOD_BY_NAME[name], level, static_end=pd.Timestamp("2020-03-31"))
     scored = frame.index >= pd.Timestamp("2020-04-01", tz="UTC")
     covered = (frame["load"] >= iv["lo"]) & (frame["load"] <= iv["hi"])
     assert covered[scored].mean() == pytest.approx(level, abs=0.02)

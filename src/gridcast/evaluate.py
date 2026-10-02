@@ -15,17 +15,21 @@ import pandas as pd
 
 from gridcast import config, metrics
 from gridcast.conformal import METHOD_BY_NAME, METHODS, all_intervals, online_intervals
+from gridcast.models import bias_adjusted, level_correct
 
 RESULTS = config.RESULTS
 INTERVALS = config.INTERIM / "intervals.parquet"
 
 POINT_MODELS = {
-    "point": "gridcast (LightGBM)",
-    "rte_j1": "RTE day-ahead (J-1)",
+    "point": "gridcast",
+    "point_raw": "gridcast, no level correction",
+    "rte_j1_adj": "RTE J-1, level-corrected",
+    "rte_j1": "RTE J-1, as published",
     "naive": "Seasonal naive (D-7)",
-    "point_oracle": "gridcast, observed weather (oracle)",
+    "point_oracle": "gridcast with observed weather (oracle)",
 }
 PRIMARY = "cqr_rolling_aci"
+FAN_WEEK = "2022-12-10"  # the December 2022 cold snap, at the height of the crisis
 
 
 def periods() -> dict[str, tuple[pd.Timestamp, pd.Timestamp]]:
@@ -55,7 +59,8 @@ def point_table(pred: pd.DataFrame, reps: int = config.BOOTSTRAP_REPS) -> pd.Dat
         sub = _in(pred, span)
         y = sub["load"].to_numpy()
         blocks = metrics.week_blocks(sub.index)
-        rte_ape = np.abs(sub["rte_j1"].to_numpy() - y) / y
+        # Differences are taken against the level-corrected RTE forecast: the fair benchmark.
+        rte_ape = np.abs(sub["rte_j1_adj"].to_numpy() - y) / y
         for col, label in POINT_MODELS.items():
             yhat = sub[col].to_numpy()
             ape = np.abs(yhat - y) / y
@@ -75,9 +80,9 @@ def point_table(pred: pd.DataFrame, reps: int = config.BOOTSTRAP_REPS) -> pd.Dat
                     "rmse_mw": metrics.rmse(y, yhat),
                     "mae_mw": metrics.mae(y, yhat),
                     "bias_mw": float(np.mean(yhat - y)),
-                    "mape_minus_rte": d_est,
-                    "mape_minus_rte_lo": d_lo,
-                    "mape_minus_rte_hi": d_hi,
+                    "mape_vs_rte": d_est,
+                    "mape_vs_rte_lo": d_lo,
+                    "mape_vs_rte_hi": d_hi,
                 }
             )
     return pd.DataFrame(rows)
@@ -210,10 +215,27 @@ def monthly_demand(table: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index()
 
 
+def rte_bias(table: pd.DataFrame) -> pd.DataFrame:
+    """RTE's published J-1 error by year (consolidated series) and on the real-time feed."""
+    t = table[(table.index >= pd.Timestamp("2015-01-01", tz="UTC"))].dropna(
+        subset=["load", "rte_j1"]
+    )
+    t = t[t.index < (config.BACKTEST_END + pd.Timedelta(days=1)).tz_localize(config.PARIS)]
+    err = (t["rte_j1"] - t["load"]) / t["load"]
+    is_rt = t["realtime"].fillna(0).to_numpy() == 1
+    year = t.index.tz_convert(config.PARIS).year.astype(str)
+    segment = np.where(is_rt, "real-time feed", year)
+    frame = pd.DataFrame({"segment": segment, "bias": err, "ape": err.abs()})
+    out = frame.groupby("segment", sort=False).agg(
+        hours=("bias", "size"), bias_pct=("bias", "mean"), mape=("ape", "mean")
+    )
+    return out.reset_index()
+
+
 def fan_week(pred: pd.DataFrame, intervals: pd.DataFrame, start: str, days: int = 7):
     lo_t = pd.Timestamp(start)
     sub = pred[(pred["day"] >= lo_t) & (pred["day"] < lo_t + pd.Timedelta(days=days))]
-    out = sub[["day", "hour", "load", "point", "rte_j1"]].copy()
+    out = sub[["day", "hour", "load", "point", "rte_j1", "rte_j1_adj"]].copy()
     for level in config.LEVELS:
         iv = intervals[(intervals["method"] == PRIMARY) & (intervals["level"] == level)]
         iv = iv.set_index("time").reindex(out.index)
@@ -253,9 +275,9 @@ def summary(point: pd.DataFrame, interval: pd.DataFrame) -> dict:
                     "mape_hi",
                     "rmse_mw",
                     "bias_mw",
-                    "mape_minus_rte",
-                    "mape_minus_rte_lo",
-                    "mape_minus_rte_hi",
+                    "mape_vs_rte",
+                    "mape_vs_rte_lo",
+                    "mape_vs_rte_hi",
                 )
             }
             for m in POINT_MODELS
@@ -281,6 +303,10 @@ def summary(point: pd.DataFrame, interval: pd.DataFrame) -> dict:
 
 def run(table: pd.DataFrame, pred: pd.DataFrame, reps: int = config.BOOTSTRAP_REPS) -> dict:
     RESULTS.mkdir(parents=True, exist_ok=True)
+    pred = level_correct(pred)
+    oracle = bias_adjusted(pred["point_oracle"], pred["load"])
+    pred["point_oracle"] = oracle.fillna(pred["point_oracle"])
+    pred["rte_j1_adj"] = bias_adjusted(table["rte_j1"], table["load"]).reindex(pred.index)
     intervals = all_intervals(pred)
     intervals.to_parquet(INTERVALS)
 
@@ -300,13 +326,16 @@ def run(table: pd.DataFrame, pred: pd.DataFrame, reps: int = config.BOOTSTRAP_RE
     )
     monthly_mape(rows).to_csv(RESULTS / "monthly_mape.csv", index=False, float_format="%.6g")
     monthly_demand(table).to_csv(RESULTS / "monthly_demand.csv", index=False, float_format="%.6g")
-    fan_week(pred, intervals, "2022-12-10").to_csv(
+    rte_bias(table).to_csv(RESULTS / "rte_bias.csv", index=False, float_format="%.6g")
+    fan_week(pred, intervals, FAN_WEEK).to_csv(
         RESULTS / "fan_week.csv", index=False, float_format="%.6g"
     )
     seed = pred[
         pred["day"] > config.BACKTEST_END - pd.Timedelta(days=config.ROLLING_WINDOW_DAYS + 5)
     ]
-    seed.drop(columns=["point_oracle", "refit"]).to_parquet(RESULTS / "calibration_seed.parquet")
+    seed.drop(columns=["point_oracle", "refit", "rte_j1_adj"]).to_parquet(
+        RESULTS / "calibration_seed.parquet"
+    )
 
     result = summary(point, interval)
     (RESULTS / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
