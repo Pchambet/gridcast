@@ -2,8 +2,13 @@
 
 The model for month M is trained on target days up to the first day of M minus two
 days (the last complete day at the first issue time of M), with observed weather.
-Forecasts for M use the day-ahead information set only. The same point model is also
-fed observed weather ("oracle") to measure what weather-forecast error costs.
+Forecasts for M use the day-ahead information set only. The same models are also fed
+two other information sets, to bracket the published backtest:
+
+* ``*_oracle``: observed weather for the target day (what weather-forecast error costs);
+* ``*_era5lag``: reanalysis masked over the last days before issue, as in the live job
+  (what the backtest's complete reanalysis is worth, see
+  :func:`gridcast.features.build_features_era5_delayed`).
 """
 
 from __future__ import annotations
@@ -13,7 +18,7 @@ import time
 import pandas as pd
 
 from gridcast import config
-from gridcast.features import build_features
+from gridcast.features import build_features, build_features_era5_delayed
 from gridcast.models import DemandModel
 
 PREDICTIONS = config.INTERIM / "predictions.parquet"
@@ -36,6 +41,7 @@ def run_backtest(
     test_days = pd.date_range(start, end, freq="D")
     forecast = build_features(table, test_days, mode="forecast")
     oracle = observed[observed["day"] >= start]
+    era5lag = build_features_era5_delayed(table, test_days)
 
     chunks = []
     for month in pd.period_range(start, end, freq="M"):
@@ -50,9 +56,9 @@ def run_backtest(
         in_month = forecast["day"].dt.to_period("M") == month
         rows = forecast[in_month]
         pred = model.predict(rows)
-        pred["point_oracle"] = model.boosters["point"].predict(
-            oracle.loc[rows.index, model.boosters["point"].feature_name()]
-        )
+        for name, frame in (("oracle", oracle), ("era5lag", era5lag)):
+            alt = model.predict(frame.loc[rows.index])
+            pred[[f"{col}_{name}" for col in alt]] = alt.to_numpy()
         pred["refit"] = first
         pred[["day", "hour", "load", "rte_j1"]] = rows[["day", "hour", "load", "rte_j1"]]
         pred["naive"] = rows["load_d7"]

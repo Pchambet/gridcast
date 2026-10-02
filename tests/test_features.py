@@ -3,41 +3,45 @@ import pandas as pd
 import pytest
 
 from gridcast import features, infoset
-from gridcast.features import FEATURES, build_features
+from gridcast.features import FEATURES, build_features, build_features_era5_delayed
 
 DAYS = ["2023-10-29", "2023-12-12", "2024-03-31", "2024-04-01"]
 
 
-def _poison_future(table: pd.DataFrame, day: pd.Timestamp) -> pd.DataFrame:
-    """Replace everything unknowable at the issue time of ``day`` by garbage."""
-    poisoned = table.copy()
-    rng = np.random.default_rng(1)
-    after_cutoff = poisoned.index >= infoset.demand_cutoff(day)
-    after_issue = poisoned.index >= infoset.issue_time(day)
-    poisoned.loc[after_cutoff, "load"] = rng.normal(1e6, 1e5, after_cutoff.sum())
-    poisoned.loc[after_issue, "temp_obs"] = rng.normal(80, 10, after_issue.sum())
-    # Forecasts are legitimate inputs only if issued before the issue time; corrupt the
-    # 24 h-ahead values that were not yet available (valid more than 20 h after issue).
-    late = poisoned.index > infoset.issue_time(day) + pd.Timedelta(hours=20)
-    poisoned.loc[late, "temp_fc_d1"] = rng.normal(80, 10, late.sum())
-    return poisoned
-
-
 @pytest.mark.parametrize("day", DAYS)
-def test_forecast_features_ignore_everything_after_issue_time(table, day):
+def test_forecast_features_ignore_everything_after_issue_time(table, poison, day):
     day = pd.Timestamp(day)
     clean = build_features(table, [day], mode="forecast")[FEATURES]
-    dirty = build_features(_poison_future(table, day), [day], mode="forecast")[FEATURES]
+    dirty = build_features(poison(table, day), [day], mode="forecast")[FEATURES]
     pd.testing.assert_frame_equal(clean, dirty)
     assert clean.notna().all().all()
 
 
-def test_observed_mode_does_use_observed_temperature(table):
+def test_observed_mode_does_use_observed_temperature(table, poison):
     # Sanity check of the leakage test itself: the oracle mode must react to poison.
     day = pd.Timestamp("2023-12-12")
     clean = build_features(table, [day], mode="observed")["temp"]
-    dirty = build_features(_poison_future(table, day), [day], mode="observed")["temp"]
+    dirty = build_features(poison(table, day), [day], mode="observed")["temp"]
     assert not np.allclose(clean, dirty)
+
+
+def test_era5_delayed_features_ignore_recent_reanalysis(table):
+    day = pd.Timestamp("2023-12-12")
+    delayed = build_features_era5_delayed(table, [day])[FEATURES]
+    # With no delay the 120-day slice reproduces the full-history features exactly.
+    full = build_features(table, [day], mode="forecast")[FEATURES]
+    pd.testing.assert_frame_equal(
+        build_features_era5_delayed(table, [day], delay=pd.Timedelta(0))[FEATURES], full
+    )
+    # Reanalysis inside the delay window must not matter...
+    recent = table.copy()
+    window = (recent.index >= infoset.issue_time(day) - pd.Timedelta(days=5)) & (
+        recent.index < infoset.issue_time(day)
+    )
+    recent.loc[window, "temp_obs"] += 30.0
+    pd.testing.assert_frame_equal(build_features_era5_delayed(recent, [day])[FEATURES], delayed)
+    # ... while the complete-reanalysis backtest features do use it.
+    assert not build_features(recent, [day], mode="forecast")[FEATURES].equals(full)
 
 
 def test_features_are_deterministic(table):

@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import lfilter
 
-from gridcast import infoset
+from gridcast import config, infoset
 from gridcast.config import PARIS
 
 WeatherMode = Literal["observed", "forecast"]
@@ -157,7 +157,9 @@ def mos_correct(table: pd.DataFrame, window_days: int = MOS_WINDOW_DAYS) -> pd.D
     return out
 
 
-def forecast_temperature(table: pd.DataFrame, day: pd.Timestamp, times: pd.DatetimeIndex):
+def forecast_temperature(
+    table: pd.DataFrame, day: pd.Timestamp, times: pd.DatetimeIndex
+) -> np.ndarray:
     """Lead-matched forecast for ``times`` (falls back to the other lead if missing).
 
     ``table`` must hold the (MOS-corrected) ``temp_fc_d1`` / ``temp_fc_d2`` columns.
@@ -309,3 +311,25 @@ def build_features(
     frame["load"] = table["load"].reindex(targets).to_numpy()
     frame["rte_j1"] = table["rte_j1"].reindex(targets).to_numpy()
     return frame
+
+
+def build_features_era5_delayed(
+    table: pd.DataFrame, days: Sequence, delay: pd.Timedelta = config.ERA5_DELAY
+) -> pd.DataFrame:
+    """Forecast-mode features as the live job sees them, for an information-set ablation.
+
+    The backtest treats every reanalysis hour before the issue time as known, but ERA5
+    is published days late. Here, for each day, reanalysis temperature from
+    ``issue - delay`` on is masked, so the thermal-inertia state, the D-7 temperature and
+    the MOS correction fall back on forecasts exactly as in live operation. Each day is
+    built on a 120-day slice of ``table``: enough for the 60-day MOS window, the EWM
+    warm-up and the two-week demand lags, and far cheaper than the full history.
+    """
+    parts = []
+    for day in days:
+        issue = infoset.issue_time(pd.Timestamp(day))
+        lo, hi = issue - pd.Timedelta(days=120), issue + pd.Timedelta(days=3)
+        window = table[(table.index >= lo) & (table.index < hi)].copy()
+        window.loc[window.index >= issue - delay, "temp_obs"] = np.nan
+        parts.append(build_features(window, [day], mode="forecast"))
+    return pd.concat(parts)
