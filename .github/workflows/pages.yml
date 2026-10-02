@@ -26,7 +26,7 @@ jobs:
         run: |
           mkdir -p data/live
           if git ls-remote --exit-code --heads origin live-data; then
-            git fetch --depth 1 origin live-data
+            git fetch --depth 1 origin live-data:refs/remotes/origin/live-data
             git show origin/live-data:forecast_log.csv > data/live/forecast_log.csv
           fi
       - run: uv run gridcast report

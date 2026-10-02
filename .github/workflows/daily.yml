@@ -34,7 +34,7 @@ jobs:
       - name: Check out the forecast log branch (orphan, created on first run)
         run: |
           if git ls-remote --exit-code --heads origin live-data; then
-            git fetch origin live-data
+            git fetch origin live-data:refs/remotes/origin/live-data
             git worktree add live-data origin/live-data
           else
             git worktree add --detach live-data
