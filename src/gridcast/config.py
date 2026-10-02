@@ -18,7 +18,7 @@ DATA = ROOT / "data"
 RAW = DATA / "raw"
 INTERIM = DATA / "interim"
 RESULTS = DATA / "results"
-LIVE = DATA / "live"
+LIVE = Path(os.environ.get("GRIDCAST_LIVE_DIR", DATA / "live"))
 FIGURES = ROOT / "docs" / "figures"
 SITE = ROOT / "site"
 
