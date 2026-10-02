@@ -531,9 +531,9 @@ def _filled_text(info: dict) -> tuple[str, str]:
     )
 
 
-def _num(x: object) -> float | None:
+def _num(x: float | None) -> float | None:
     """A JSON-safe number: NaN and infinities become null."""
-    return float(x) if pd.notna(x) and np.isfinite(float(x)) else None
+    return float(x) if x is not None and np.isfinite(x) else None
 
 
 def latest_forecast(log: pd.DataFrame) -> dict | None:
